@@ -1,0 +1,3 @@
+[submodule "cosmos-reason2"]
+	path = cosmos-reason2
+	url = https://github.com/nvidia-cosmos/cosmos-reason2.git
