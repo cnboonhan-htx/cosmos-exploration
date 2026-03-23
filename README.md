@@ -11,8 +11,10 @@ docker tag synthetic-vqa:latest embodied-ai-gitea.apps.octocp.alexnet.htx/runai-
 docker images --format '{{.Repository}}:{{.Tag}}' | grep '^embodied-ai-gitea' | while read img; do docker push "$img"; done
 ```
 
-## Deploy
+## Deploy (Local)
 ```
-oc apply -f synthetic-vqa/configmap-prompts.yaml
-oc apply -f synthetic-vqa/pod-synthetic-vqa.yaml
+docker run --gpus all \
+  -v $(pwd)/output:/workspace/output \
+  -v ~/.cache/huggingface:/root/.cache/huggingface:ro \
+  synthetic-vqa generate_images.py --prompts-file example_prompts.json --output-dir /workspace/output
 ```

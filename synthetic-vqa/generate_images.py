@@ -1,20 +1,14 @@
 """
-Generate synthetic training images using Wan2.2 text-to-image.
-
-Wan2.2 is a video model (WanPipeline) that generates single images when num_frames=1.
-
 Usage:
-    python generate_images.py --prompts-file prompts.json --output-dir ./raw/images
-    python generate_images.py --prompts-file prompts.json --output-dir ./raw/images --model-id Wan-AI/Wan2.1-T2V-1.3B-Diffusers  
+    python generate_images.py --prompts-file prompts.json --output-dir ./output --model-id Wan-AI/Wan2.1-T2V-1.3B-Diffusers
 
-Dependencies:
-    pip install git+https://github.com/huggingface/diffusers transformers accelerate torch ftfy
+Reference:
+    https://huggingface.co/docs/diffusers/en/api/pipelines/wan
 """
 
 import argparse
 import json
 import logging
-import os
 from pathlib import Path
 
 import numpy as np
@@ -25,9 +19,7 @@ from PIL import Image
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-# Default: 14B model (~80GB VRAM)
-# For 24GB VRAM, use: export WAN_MODEL_ID=Wan-AI/Wan2.1-T2V-1.3B-Diffusers (~8GB VRAM)
-DEFAULT_MODEL_ID = os.environ.get("WAN_MODEL_ID", "Wan-AI/Wan2.2-T2V-A14B-Diffusers")
+DEFAULT_MODEL_ID = "Wan-AI/Wan2.1-T2V-1.3B-Diffusers"
 DEFAULT_NEGATIVE_PROMPT = (
     "blurry, low quality, deformed, ugly, worst quality, overexposed, "
     "subtitles, watermark, text, banner"
@@ -72,15 +64,6 @@ def generate_image(
 
 
 def load_prompts(prompts_file: str) -> list[dict]:
-    """Load prompts from a JSON file.
-
-    Expected format:
-    [
-        {"id": "scene_001", "prompt": "A warehouse with stacked boxes and a forklift"},
-        {"id": "scene_002", "prompt": "An outdoor construction site with safety cones"},
-        ...
-    ]
-    """
     with open(prompts_file) as f:
         return json.load(f)
 
