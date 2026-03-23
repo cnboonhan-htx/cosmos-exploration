@@ -23,7 +23,7 @@ docker volume create synthetic-vqa-output
 # Launch Reasoning Model Server (or use a public model)
 uv run --with vllm vllm serve nvidia/Cosmos-Reason2-2B \
   --allowed-local-media-path "$(pwd)" \
-  --max-model-len 8192 \
+  --max-model-len 16000 \
   --media-io-kwargs '{"video": {"num_frames": -1}}' \
   --reasoning-parser qwen3 \
   --port 8000
@@ -40,7 +40,7 @@ docker run --gpus all \
   -v ~/.cache/huggingface:/root/.cache/huggingface:ro \
   synthetic-vqa generate_images.py --prompts-file example_prompts.json --output-dir /workspace/output
 
-# Generate Annotations
+# Generate Annotations. Cosmos-2B for CoT, Claude for final Action
 docker run --gpus all \
   --network host \
   -v synthetic-vqa-output:/workspace/output \
@@ -49,7 +49,31 @@ docker run --gpus all \
     --questions-file example_questions.json \
     --actions-file example_actions.json \
     --output-dir /workspace/output \
-    --base-url http://localhost:8000/v1
+    --base-url http://localhost:8000/v1 \
+    --action-base-url http://localhost:8317/v1 \
+    --action-api-key "your-api-key-3" \
+    --action-model-id "claude-opus-4-6"
 ```
 
 ## Edit Dataset
+TBD: Edit responses.json
+
+## Generate Dataset
+```
+docker run --gpus all \
+  -v synthetic-vqa-output:/workspace/output \
+  synthetic-vqa create_llava_dataset.py \
+    --responses-file /workspace/output/responses.json \
+    --output-dir /workspace/output \
+    --dataset-name cnboonhan-htx/demo_hazmat
+
+# Copy output from volume to local directory
+docker create --name tmp -v synthetic-vqa-output:/data busybox
+docker cp tmp:/data/. ./output/
+docker rm tmp
+```
+
+## Upload
+```
+hf upload cnboonhan-htx/demo_hazmat ./output/cnboonhan-htx/demo_hazmat/ --repo-type dataset
+```

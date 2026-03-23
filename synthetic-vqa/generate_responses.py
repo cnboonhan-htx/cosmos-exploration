@@ -16,6 +16,7 @@ import argparse
 import base64
 import json
 import logging
+import re
 import time
 from pathlib import Path
 
@@ -33,6 +34,26 @@ think step by step about what you observe, then provide a concise answer in Engl
 You MUST format your response exactly as:
 <think>your reasoning here</think>
 <answer>your answer here</answer>"""
+
+ACTION_PROMPT = """\
+You are a robot action planner. You are given visual reasoning context about a scene \
+and must decide on a sequence of actions to take.
+
+The available actions are:
+{actions}
+
+Each action takes an (object) parameter that should be replaced with a specific object \
+identified from the reasoning context.
+
+Based on the reasoning context below, output an ordered list of actions to take. \
+Reasoning context:
+{reasoning}
+
+You MUST format your response exactly as:
+<think>your reasoning here</think>
+<answer>your answer here</answer>
+"""
+
 
 def encode_image_base64(image_path: str) -> str:
     with open(image_path, "rb") as f:
@@ -57,8 +78,26 @@ def query_vlm(client: OpenAI, model: str, image_path: str, question: str) -> str
             },
         ],
     )
-    # logger.info(f"Raw response: {response.choices[0].message}") 
+    # logger.info(f"Raw response: {response.choices[0].message}")
     return response.choices[0].message.reasoning, response.choices[0].message.content
+
+
+def query_actions(client: OpenAI, model: str, actions: list[str], reasoning: str) -> str:
+    actions_str = "\n".join(f"- {a}" for a in actions)
+    prompt = ACTION_PROMPT.format(actions=actions_str, reasoning=reasoning)
+
+    response = client.chat.completions.create(
+        model=model,
+        messages=[
+            {"role": "user", "content": prompt},
+        ],
+    )
+    content = response.choices[0].message.content or ""
+    match = re.search(r"<answer>(.*?)</answer>", content, re.DOTALL)
+    if match:
+        return match.group(1).strip()
+    logger.warning("No <answer> tags found in action response, returning raw content")
+    return content
 
 
 def main():
@@ -66,20 +105,36 @@ def main():
     parser.add_argument("--manifest-file", required=True, help="Path to manifest.json from generate_images.py")
     parser.add_argument("--output-dir", required=True, help="Path to output directory for responses.json")
     parser.add_argument("--model-id", default=DEFAULT_MODEL_ID, help="VLM model ID")
-    parser.add_argument("--base-url", required=True, help="OpenAI-compatible API base URL (e.g. http://localhost:8000/v1)")
-    parser.add_argument("--api-key", default="token-unused", help="API key for the endpoint (default: token-unused)")
+    parser.add_argument("--base-url", required=True, help="OpenAI-compatible API base URL for reasoning (e.g. http://localhost:8000/v1)")
+    parser.add_argument("--api-key", default="token-unused", help="API key for the reasoning endpoint (default: token-unused)")
     parser.add_argument("--questions-file", required=True, help="JSON file with questions (list of strings), e.g. example_questions.json")
+    parser.add_argument("--actions-file", required=True, help="JSON file with available actions (list of strings), e.g. example_actions.json")
+    parser.add_argument("--action-base-url", default=None, help="OpenAI-compatible API base URL for actions (defaults to --base-url)")
+    parser.add_argument("--action-api-key", default=None, help="API key for the action endpoint (defaults to --api-key)")
+    parser.add_argument("--action-model-id", default=None, help="Model ID for action inference (defaults to --model-id)")
     args = parser.parse_args()
 
-    client = OpenAI(api_key=args.api_key, base_url=args.base_url)
+    reasoning_client = OpenAI(api_key=args.api_key, base_url=args.base_url)
+    action_base_url = args.action_base_url or args.base_url
+    action_api_key = args.action_api_key or args.api_key
+    action_model_id = args.action_model_id or args.model_id
+    action_client = OpenAI(api_key=action_api_key, base_url=action_base_url)
 
-    # Verify the endpoint is reachable
+    # Verify the endpoints are reachable
     try:
-        client.models.list()
-        logger.info(f"Endpoint {args.base_url} is up")
+        reasoning_client.models.list()
+        logger.info(f"Reasoning endpoint {args.base_url} is up")
     except Exception as e:
-        logger.error(f"Cannot reach endpoint {args.base_url}: {e}")
+        logger.error(f"Cannot reach reasoning endpoint {args.base_url}: {e}")
         raise SystemExit(1)
+
+    if action_base_url != args.base_url:
+        try:
+            action_client.models.list()
+            logger.info(f"Action endpoint {action_base_url} is up")
+        except Exception as e:
+            logger.error(f"Cannot reach action endpoint {action_base_url}: {e}")
+            raise SystemExit(1)
 
     with open(args.manifest_file) as f:
         manifest = json.load(f)
@@ -88,6 +143,10 @@ def main():
     with open(args.questions_file) as f:
         questions = json.load(f)
     logger.info(f"Loaded {len(questions)} questions from {args.questions_file}")
+
+    with open(args.actions_file) as f:
+        actions = json.load(f)
+    logger.info(f"Loaded {len(actions)} actions from {args.actions_file}")
 
     output_path = Path(args.output_dir)
     output_path.mkdir(parents=True, exist_ok=True)
@@ -125,7 +184,7 @@ def main():
 
             while True:
                 try:
-                    reasoning, response = query_vlm(client, args.model_id, image_path, question)
+                    reasoning, response = query_vlm(reasoning_client, args.model_id, image_path, question)
                     trace_parts.append(reasoning if reasoning else "")
                     # trace_parts.append(response if response else "")
                     break
@@ -135,10 +194,21 @@ def main():
 
         reasoning = "\n\n".join(trace_parts)
 
+        logger.info(f"  Querying action plan for {prompt_id}...")
+        while True:
+            try:
+                action_plan = query_actions(action_client, action_model_id, actions, reasoning)
+                logger.info(f"  Action plan: {action_plan}")
+                break
+            except Exception as e:
+                logger.warning(f"Failed action query for {prompt_id}, retrying in 5s: {e}")
+                time.sleep(5)
+
         rows.append({
             "id": prompt_id,
             "image": image_path,
             "reasoning": reasoning,
+            "actions": action_plan,
         })
 
         # Save after each manifest entry (resumable)
