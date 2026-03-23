@@ -1,0 +1,12 @@
+[
+  "What hazardous materials are visible in this scene, and what do their labels or placards indicate about their chemical properties and danger levels?",
+  "Identify all safe traversal paths a ground robot could take to approach the hazardous materials without encountering structural collapse risks or obstructions.",
+  "What personal protective equipment or safety infrastructure is present in the scene that indicates the type of contamination a robot's sensors should be calibrated to detect?",
+  "Are there any leaking, ruptured, or compromised containers, and what is the estimated spread area of the spilled material?",
+  "What structural hazards such as collapsed beams, unstable walls, or damaged flooring could impede or endanger a robot during navigation and sample collection?",
+  "Describe the surface conditions of the ground, including debris density, liquid pooling, and traction risks that would affect a wheeled or tracked robot's mobility.",
+  "Which containers or material sources appear most accessible for robotic sample collection, and what grasping or extraction approach would each require?",
+  "Are there any ignition sources, exposed gas lines, or conditions that could trigger secondary explosions or chemical reactions during robotic intervention?",
+  "What is the spatial layout of the scene, including entry and exit points, clearance widths, and distances between key hazardous material locations?",
+  "Are there any environmental indicators such as smoke, vapor clouds, discoloration, or foam residue that suggest ongoing chemical reactions or airborne contamination a robot must account for?"
+]
